@@ -33,6 +33,7 @@ import scipy.signal as sig
 from WF_SDK import device
 from WF_SDK import scope
 from WF_SDK import wavegen
+from scipy.signal import find_peaks
 
 # ADS FUNCTIONS # 
 class ADSHardware():
@@ -360,14 +361,50 @@ if __name__ == "__main__":
     ads = ADSHardware()
     ads.startup()
 
+
     try:
-        ads.use_wavegen(channel=1, function=wavegen_functions["sine"], offset_v=2.1, freq_hz=10, amp_v=1) #ADS control
+        # 1 run of the LED collecteing data
+       '''ads.use_wavegen(channel=1, function=wavegen_functions["sine"], offset_v=2.1, freq_hz=10, amp_v=1) #ADS control
     
         time.sleep(1)
     
         duration = 15
         raw_data = oscilloscope_run(ads, duration, 1, 500) # scope control
-        ads.close_wavegen()
+        ads.close_wavegen()'''
+       
+
+       ads.use_wavegen(channel=1, function=wavegen_functions["square"], offset_v=1, amp_v=1, freq_hz=7000)
+       ads.use_wavegen(channel=2, function=wavegen_functions["square"], offset_v=1, amp_v=1, freq_hz=12000)
+
+       time.sleep(1)
+       
+       duration = 10
+       raw_data = oscilloscope_run(ads, duration=duration, channel=1, sampling_freq=1e6)
+       ads.close_wavegen()
+       
+       # PLOT RAW DATA
+       plt.plot(raw_data["x"], raw_data["y"])
+       plt.xlabel('Time (ms)')
+       plt.ylabel('Voltage (V)')
+       plt.title("Scope Trace (Raw Data)")
+       plt.show()
+
+       # TAKE FFT
+       fft_raw = fft(raw_data)
+       demod_radio_raw = demodulate_radio(raw_data, nu_3db=15000)
+
+       # Run again to take demodulated lock in
+       red_demodlockin = demodulate_lockin(ads, nu_mod=7000, nu_3db=15000)
+       ir_demodlockin = demodulate_lockin(ads, nu_mod=12000, nu_3db=15000)
+
+       # Calculate
+       red_vpp, _ = find_peaks(red_demodlockin)
+       ir_vpp, _ = find_peaks(ir_demodlockin)
+
+
+       ads.disconnect()
+       
+       
 
     except Exception:
         #allows you to see errors while ensuring that connections closed

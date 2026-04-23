@@ -351,11 +351,11 @@ if __name__ == "__main__":
     ads.startup()
 
     try:
-        ads.use_wavegen(channel=1, function=wavegen_functions["sine"], offset_v=2.1, freq_hz=10, amp_v=1) #ADS control
+        ads.use_wavegen(channel=1, function=wavegen_functions["sine"], offset_v=0, freq_hz=10, amp_v=2) #ADS control
         ### COMMENT OUT THE LINE BELOW FOR L10.2(a)
         time.sleep(1)
         ### FILL IN THIS LINE FOR L10.2(a)
-        duration = 15
+        duration = 5
         raw_data = oscilloscope_run(ads, duration, 1, 500) # scope control
         ads.close_wavegen()
 
@@ -383,10 +383,10 @@ if __name__ == "__main__":
         # '''
         ads.use_wavegen(channel=1,
                         function=wavegen_functions["dc"],
-                        offset_v=2.1)
+                        offset_v=1)
         time.sleep(1) #so everything can 'settle' before data is collected
 
-        dc_baseband_data = oscilloscope_run(ads, duration=15, channel=1, sampling_freq=500)
+        dc_baseband_data = oscilloscope_run(ads, duration=duration, channel=1, sampling_freq=500)
 
         plt.plot(dc_baseband_data["x"], dc_baseband_data["y"])
         plt.grid(visible=True, which='major', color='black', linestyle='-')
@@ -396,8 +396,8 @@ if __name__ == "__main__":
         plt.title("DC Baseband Data")
         plt.show()
 
-        fname = os.path.join('./heartbeat_data', 'demod_lockin'+time.strftime("%Y%m%d-%H%M%S")+".txt")
-        np.savetxt(fname, np.array([dc_baseband_data["x"], dc_baseband_data["y"]]))
+        # fname = os.path.join('./heartbeat_data', 'demod_lockin'+time.strftime("%Y%m%d-%H%M%S")+".txt")
+        # np.savetxt(fname, np.array([dc_baseband_data["x"], dc_baseband_data["y"]]))
 
         fft_dc_baseband = fft(dc_baseband_data)
 

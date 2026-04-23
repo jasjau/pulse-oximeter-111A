@@ -398,12 +398,24 @@ if __name__ == "__main__":
        ir_demodlockin = demodulate_lockin(ads, nu_mod=12000, nu_3db=15000)
 
        # Calculate
-       red_pp= find_peaks(red_demodlockin)
-       ir_pp = find_peaks(ir_demodlockin)
+       red_pp= find_peaks(red_demodlockin["y"])
+       ir_pp = find_peaks(ir_demodlockin["y"])
        red_vpp = np.diff(red_pp)
        ir_vpp = np.diff(ir_pp)
        red_AC_rms = red_vpp / 2
        ir_AC_rms = ir_vpp /2
+
+       red_DC = np.mean(red_demodlockin["y"])
+       ir_DC = np.mean(ir_demodlockin["y"])
+
+       ratio = (red_AC_rms/red_DC) / (ir_AC_rms/ir_DC)
+
+       plt.plot(red_demodlockin["x"], ratio)
+       plt.xlabel('Time (ms)')
+       plt.ylabel('R')
+       plt.show()
+
+
 
        ads.disconnect()
        

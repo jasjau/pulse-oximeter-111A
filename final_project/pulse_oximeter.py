@@ -398,9 +398,12 @@ if __name__ == "__main__":
        ir_demodlockin = demodulate_lockin(ads, nu_mod=12000, nu_3db=15000)
 
        # Calculate
-       red_vpp, _ = find_peaks(red_demodlockin)
-       ir_vpp, _ = find_peaks(ir_demodlockin)
-
+       red_pp= find_peaks(red_demodlockin)
+       ir_pp = find_peaks(ir_demodlockin)
+       red_vpp = np.diff(red_pp)
+       ir_vpp = np.diff(ir_pp)
+       red_AC_rms = red_vpp / 2
+       ir_AC_rms = ir_vpp /2
 
        ads.disconnect()
        

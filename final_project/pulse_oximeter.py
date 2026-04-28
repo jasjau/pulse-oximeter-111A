@@ -302,7 +302,7 @@ def demodulate_lockin(ads_object: ADSHardware, nu_mod: float, nu_3db: float, dur
     #calculate the cos and sin components of the local oscillator
     #i.e. what is being produced by wavegen
     demodulated_data["local_oscillator_cos"] = np.cos(omega*data["x"]/MILLISECOND_CONVERSION)
-    demodulated_data["local_oçscillator_sin"] = np.sin(omega*data["x"]/MILLISECOND_CONVERSION)
+    demodulated_data["local_oscillator_sin"] = np.sin(omega*data["x"]/MILLISECOND_CONVERSION)
 
     #FILL IN THE BLANKS BELOW FOR L10.6(a)
     #finds the cos and sin components of the signal read on the scope
@@ -364,13 +364,19 @@ if __name__ == "__main__":
 
     try:
         # 1 run of the LED collecteing data
-       '''ads.use_wavegen(channel=1, function=wavegen_functions["sine"], offset_v=2.1, freq_hz=10, amp_v=1) #ADS control
+        # ads.use_wavegen(channel=1, function=wavegen_functions["dc"], offset_v=2) #ADS control
     
-        time.sleep(1)
+        # time.sleep(1)
     
-        duration = 15
-        raw_data = oscilloscope_run(ads, duration, 1, 500) # scope control
-        ads.close_wavegen()'''
+        # duration = 10
+        # raw_data = oscilloscope_run(ads, duration, 1, 500) # scope control
+
+        # plt.plot(raw_data["x"], raw_data["y"])
+        # plt.xlabel('Time (ms)')
+        # plt.ylabel('Voltage (V)')
+        # plt.title("Scope Trace (Raw Data)")
+        # plt.show()
+        # ads.close_wavegen()
        
 
        ads.use_wavegen(channel=1, function=wavegen_functions["square"], offset_v=1, amp_v=1, freq_hz=7000)
@@ -378,9 +384,8 @@ if __name__ == "__main__":
 
        time.sleep(1)
        
-       duration = 10
-       raw_data = oscilloscope_run(ads, duration=duration, channel=1, sampling_freq=1e6)
-       ads.close_wavegen()
+       duration = 20
+       raw_data = oscilloscope_run(ads, duration=duration, channel=1, sampling_freq=500)
        
        # PLOT RAW DATA
        plt.plot(raw_data["x"], raw_data["y"])
@@ -388,14 +393,15 @@ if __name__ == "__main__":
        plt.ylabel('Voltage (V)')
        plt.title("Scope Trace (Raw Data)")
        plt.show()
+       ads.close_wavegen()
 
        # TAKE FFT
        fft_raw = fft(raw_data)
-       demod_radio_raw = demodulate_radio(raw_data, nu_3db=15000)
+    #    demod_radio_raw = demodulate_radio(raw_data, nu_3db=15000)
 
        # Run again to take demodulated lock in
-       red_demodlockin = demodulate_lockin(ads, nu_mod=7000, nu_3db=15000)
-       ir_demodlockin = demodulate_lockin(ads, nu_mod=12000, nu_3db=15000)
+       red_demodlockin = demodulate_lockin(ads, nu_mod=100, nu_3db=5)
+       ir_demodlockin = demodulate_lockin(ads, nu_mod=100, nu_3db=5)
 
        # Calculate
        red_pp= find_peaks(red_demodlockin["y"])

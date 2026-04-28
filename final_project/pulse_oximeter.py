@@ -30,6 +30,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.signal as sig
+import pandas as pd
 from WF_SDK import device
 from WF_SDK import scope
 from WF_SDK import wavegen
@@ -379,13 +380,14 @@ if __name__ == "__main__":
         # ads.close_wavegen()
        
 
-       ads.use_wavegen(channel=1, function=wavegen_functions["square"], offset_v=1, amp_v=1, freq_hz=7000)
-       ads.use_wavegen(channel=2, function=wavegen_functions["square"], offset_v=1, amp_v=1, freq_hz=12000)
+       ads.use_wavegen(channel=1, function=wavegen_functions["square"], offset_v=2, amp_v=2, freq_hz=7000)
+       ads.use_wavegen(channel=2, function=wavegen_functions["square"], offset_v=2, amp_v=2, freq_hz=12000)
 
        time.sleep(1)
        
-       duration = 20
-       raw_data = oscilloscope_run(ads, duration=duration, channel=1, sampling_freq=500)
+       duration = 30
+       sampling_freq = 25000
+       raw_data = oscilloscope_run(ads, duration=duration, channel=1, sampling_freq=sampling_freq)
        
        # PLOT RAW DATA
        plt.plot(raw_data["x"], raw_data["y"])
@@ -397,30 +399,64 @@ if __name__ == "__main__":
 
        # TAKE FFT
        fft_raw = fft(raw_data)
+       plt.plot(fft_raw["frequencies"], fft_raw["magnitudes"])
+       plt.xlabel("Frequencies (Hz)")
+       plt.ylabel("Voltage (V)")
+       plt.grid(visible=True, which='major', color='black', linestyle='-')
+       plt.grid(visible=True, which='minor', color='black', linestyle='--')
+    #    plt.ylim(0, 0.1)
+       plt.title("FFT Demod Radio")
+       plt.show()
+    #    plt.xlim(0, 5)
+
+
     #    demod_radio_raw = demodulate_radio(raw_data, nu_3db=15000)
 
        # Run again to take demodulated lock in
-       red_demodlockin = demodulate_lockin(ads, nu_mod=100, nu_3db=5)
-       ir_demodlockin = demodulate_lockin(ads, nu_mod=100, nu_3db=5)
+       red_demodlockin = demodulate_lockin(ads, nu_mod=7000, nu_3db=100)
+       ir_demodlockin = demodulate_lockin(ads, nu_mod=12000, nu_3db=100)
 
        # Calculate
-       red_pp= find_peaks(red_demodlockin["y"])
-       ir_pp = find_peaks(ir_demodlockin["y"])
-       red_vpp = np.diff(red_pp)
-       ir_vpp = np.diff(ir_pp)
-       red_AC_rms = red_vpp / 2
-       ir_AC_rms = ir_vpp /2
+       # red
+       red_peaks, _ = find_peaks(red_demodlockin["y"]) # gets indices
+       red_troughs, _ = find_peaks(-red_demodlockin["y"]) # gets indices
+       red_vpp = np.mean(red_demodlockin["y"][red_peaks]) - np.mean(red_demodlockin["y"][red_troughs])
 
+       # ir
+       ir_peaks, _ = find_peaks(ir_demodlockin["y"]) # gets indices
+       ir_troughs, _ = find_peaks(-ir_demodlockin["y"]) # gets indices
+       ir_vpp = np.mean(ir_demodlockin["y"][ir_peaks]) - np.mean(ir_demodlockin["y"][ir_troughs])
+
+       red_AC_rms = red_vpp / 2
+       ir_AC_rms = ir_vpp / 2
+
+       # DC needs to be moving average of demodlockin data
+    #    window = int(0.5 * sampling_freq)
+    #    red_series = pd.Series(red_demodlockin["y"])
+    #    ir_series = pd.Series(ir_demodlockin["y"])
+    #    red_DC = red_series.rolling(window, center=True).mean()
+    #    ir_DC = ir_series.rolling(window, center=True).mean()
        red_DC = np.mean(red_demodlockin["y"])
        ir_DC = np.mean(ir_demodlockin["y"])
 
        ratio = (red_AC_rms/red_DC) / (ir_AC_rms/ir_DC)
 
-       plt.plot(red_demodlockin["x"], ratio)
-       plt.xlabel('Time (ms)')
-       plt.ylabel('R')
-       plt.show()
+       fig, ax = plt.subplots(2, 2)
+    #    ax[0,0].plot(raw_data["x"], raw_data["y"]); ax[0,0].set_title("Scope Trace (Raw Data)")
+    #    ax[0,1].plot(red_demodlockin["x"], ratio); ax[0,1].set_title("Time v Ratio")
+       # ax[1,0].plot(x, y3); ax[1,0].set_title("Tangent")
+       # # ax[1,1].plot(x, y4); ax[1,1].set_title("Tanh")
+       # plt.show()
 
+       print(f"red ac rms: {red_AC_rms}")
+       print(f"red_dc: {red_DC}")
+       print(f"ir rms: {ir_AC_rms}")
+       print(f"ir_dc: {ir_DC}")
+       print(f"ratio: {ratio}")
+    #    plt.plot(red_demodlockin["x"], ratio)
+    #    plt.xlabel('Time (ms)')
+    #    plt.ylabel('R')
+    #    plt.show()
 
 
        ads.disconnect()

@@ -358,17 +358,40 @@ def demodulate_lockin(ads_object: ADSHardware, nu_mod: float, nu_3db: float, dur
 wavegen_functions = {"sine":wavegen.function.sine, "square":wavegen.function.square,
                      "triangle":wavegen.function.triangle, "dc":wavegen.function.dc}
 
+def demodulate_lockin_from_data(data, nu_mod: float, nu_3db: float):
+
+    MILLISECOND_CONVERSION = 1e3
+    omega = 2 * np.pi * nu_mod
+
+    demodulated_data = {}
+    demodulated_data["x"] = data["x"]
+
+    demodulated_data["local_oscillator_cos"] = np.cos(omega * data["x"] / MILLISECOND_CONVERSION)
+    demodulated_data["local_oscillator_sin"] = np.sin(omega * data["x"] / MILLISECOND_CONVERSION)
+
+    demodulated_data["sin"] = data["y"] * demodulated_data["local_oscillator_sin"]
+    demodulated_data["cos"] = data["y"] * demodulated_data["local_oscillator_cos"]
+
+    fs = len(data["x"] - 1)*MILLISECOND_CONVERSION / (data["x"][-1] - data["x"][0])
+
+    demodulated_data["lowpass_sin"] = butter_lowpass_filter(demodulated_data["sin"], nu_3db, fs)
+    demodulated_data["lowpass_cos"] = butter_lowpass_filter(demodulated_data["cos"], nu_3db, fs)
+
+    demodulated_data["y"] = np.sqrt(demodulated_data["lowpass_cos"]**2 + demodulated_data["lowpass_sin"]**2)
+
+    return demodulated_data
+
 if __name__ == "__main__":
     ads = ADSHardware()
     ads.startup()
 
 
     try:
-        # 1 run of the LED collecteing data
+        '''# 1 run of the LED collecteing data
         # ads.use_wavegen(channel=1, function=wavegen_functions["dc"], offset_v=2) #ADS control
     
         # time.sleep(1)
-    
+
         # duration = 10
         # raw_data = oscilloscope_run(ads, duration, 1, 500) # scope control
 
@@ -378,91 +401,210 @@ if __name__ == "__main__":
         # plt.title("Scope Trace (Raw Data)")
         # plt.show()
         # ads.close_wavegen()
+        ads.use_wavegen(channel=1, function=wavegen_functions["square"], offset_v=2, amp_v=2, freq_hz=7000)
+        ads.use_wavegen(channel=2, function=wavegen_functions["square"], offset_v=2, amp_v=2, freq_hz=12000)
+
+        time.sleep(1)
        
-
-       ads.use_wavegen(channel=1, function=wavegen_functions["square"], offset_v=2, amp_v=2, freq_hz=7000)
-       ads.use_wavegen(channel=2, function=wavegen_functions["square"], offset_v=2, amp_v=2, freq_hz=12000)
-
-       time.sleep(1)
+        duration = 30
+        sampling_freq = 5000
+        raw_data = oscilloscope_run(ads, duration=duration, channel=1, sampling_freq=sampling_freq)
        
-       duration = 30
-       sampling_freq = 25000
-       raw_data = oscilloscope_run(ads, duration=duration, channel=1, sampling_freq=sampling_freq)
+        # PLOT RAW DATA
+        plt.plot(raw_data["x"], raw_data["y"])
+        plt.xlabel('Time (ms)')
+        plt.ylabel('Voltage (V)')
+        plt.title("Scope Trace (Raw Data)")
+        plt.show()
+        ads.close_wavegen()
+
+        # TAKE FFT
+        fft_raw = fft(raw_data)
+        plt.plot(fft_raw["frequencies"], fft_raw["magnitudes"])
+        plt.xlabel("Frequencies (Hz)")
+        plt.ylabel("Voltage (V)")
+        plt.grid(visible=True, which='major', color='black', linestyle='-')
+        plt.grid(visible=True, which='minor', color='black', linestyle='--')
+        #plt.ylim(0, 0.1)
+        plt.title("FFT Demod Radio")
+        plt.show()
+        #plt.xlim(0, 5)
+        
+        # demod_radio_raw = demodulate_radio(raw_data, nu_3db=15000)
+
+        # Run again to take demodulated lock in
+        red_demodlockin = demodulate_lockin(ads, nu_mod=7000, nu_3db=100)
+        ir_demodlockin = demodulate_lockin(ads, nu_mod=12000, nu_3db=100)
+
+        # Calculate
+        # red
+        red_peaks, _ = find_peaks(red_demodlockin["y"]) # gets indices
+        red_troughs, _ = find_peaks(-red_demodlockin["y"]) # gets indices
+        red_vpp = np.mean(red_demodlockin["y"][red_peaks]) - np.mean(red_demodlockin["y"][red_troughs])
+
+        # ir
+        ir_peaks, _ = find_peaks(ir_demodlockin["y"]) # gets indices
+        ir_troughs, _ = find_peaks(-ir_demodlockin["y"]) # gets indices
+        ir_vpp = np.mean(ir_demodlockin["y"][ir_peaks]) - np.mean(ir_demodlockin["y"][ir_troughs])
+
+        red_AC_rms = red_vpp / 2
+        ir_AC_rms = ir_vpp / 2
+
+        # DC needs to be moving average of demodlockin data
+        window = int(0.5 * sampling_freq)
+        red_series = pd.Series(red_demodlockin["y"])
+        ir_series = pd.Series(ir_demodlockin["y"])
+        red_DC = red_series.rolling(window, center=True).mean()
+        ir_DC = ir_series.rolling(window, center=True).mean()
+        # red_DC = np.mean(red_demodlockin["y"])
+        # ir_DC = np.mean(ir_demodlockin["y"])
+
+        ratio = (red_AC_rms/red_DC) / (ir_AC_rms/ir_DC)
+
+        fig, ax = plt.subplots(2, 2)
+        #ax[0,0].plot(raw_data["x"], raw_data["y"]); ax[0,0].set_title("Scope Trace (Raw Data)")
+        #ax[0,1].plot(red_demodlockin["x"], ratio); ax[0,1].set_title("Time v Ratio")
+        #ax[1,0].plot(x, y3); ax[1,0].set_title("Tangent")
+        # # ax[1,1].plot(x, y4); ax[1,1].set_title("Tanh")
+        # plt.show()
+
+        print(f"red ac rms: {red_AC_rms}")
+        print(f"red_dc: {red_DC}")
+        print(f"ir rms: {ir_AC_rms}")
+        print(f"ir_dc: {ir_DC}")
+        print(f"ratio: {ratio}")
+        print(f"AC same? {red_AC_rms == ir_AC_rms}")
+        print(f"DC same? {red_DC == ir_DC}")
+        #plt.plot(red_demodlockin["x"], ratio)
+        #plt.xlabel('Time (ms)')
+        #plt.ylabel('R')
+        #plt.show()
+
+
+        ads.disconnect()'''
+
+        # Set-up
+        red_freq = 150
+        ir_freq  = 500
+
+        ads.use_wavegen(channel=1, function=wavegen_functions["square"], offset_v=2, amp_v=2, freq_hz=red_freq)
+        ads.use_wavegen(channel=2, function=wavegen_functions["square"], offset_v=2, amp_v=2, freq_hz=ir_freq)
+
+        time.sleep(1)
+
+        # Take raw data
+        duration = 8
+        sampling_freq = 1100
+
+        raw_data = oscilloscope_run(ads, duration=duration, channel=1, sampling_freq=sampling_freq)
+
+        ads.close_wavegen()
+
+        # Save raw data
+        # fname = os.path.join('./saved_files', 'raw_'+time.strftime("%Y%m%d-%H%M%S")+".txt")
+        # np.savetxt(fname, np.array([raw_data["x"], raw_data["y"]]))
+
+        # Plot Raw Data
+        fig1, ax1 = plt.subplots()
+        ax1.set_title("Scope Trace (Raw Data)")
+        ax1.plot(raw_data["x"], raw_data["y"])
+        ax1.set_xlabel('Time (ms)')
+        ax1.set_ylabel('Voltage (V)')
+        ax1.grid(True)
+
+        # Take FFT and Plot
+        fft_raw = fft(raw_data)
+        fig2, ax2 = plt.subplots()
+        ax2.set_title("FFT of Raw Data")
+        ax2.plot(fft_raw["frequencies"], fft_raw["magnitudes"])
+        ax2.set_xlabel("Frequency (Hz)")
+        ax2.set_ylabel("Magnitude (V)")
+        ax2.grid(True)
+
+        # Lock-in Demodulation
+        red = demodulate_lockin_from_data(data=raw_data, nu_mod=red_freq, nu_3db=5)
+        ir  = demodulate_lockin_from_data(data=raw_data, nu_mod=ir_freq, nu_3db=5)
+
+        # Save Demod Data
+        # fname = os.path.join('./saved_files', 'demod_'+time.strftime("%Y%m%d-%H%M%S")+".txt")
+        # np.savetxt(fname, np.array([red["x"], red["y"], ir["y"]]))
+
+        # Get AC and DC
+        window = int(0.5 * sampling_freq)
+
+        red_series = pd.Series(red["y"])
+        ir_series  = pd.Series(ir["y"])
+
+        red_DC = red_series.rolling(window, center=True).mean() # dc
+        ir_DC  = ir_series.rolling(window, center=True).mean() # dc
+
+        red_AC = red_series - red_DC # remove dc from ac signal
+        ir_AC  = ir_series - ir_DC # remove dc from ac signal
+
+        # CHECK THESE CALCULATIONS
+        red_peaks, _ = find_peaks(red["y"]) # gets indices
+        red_troughs, _ = find_peaks(-red["y"]) # gets indices
+        red_vpp = np.mean(red["y"][red_peaks]) - np.mean(red["y"][red_troughs])
+
+        # ir
+        ir_peaks, _ = find_peaks(ir["y"]) # gets indices
+        ir_troughs, _ = find_peaks(-ir["y"]) # gets indices
+        ir_vpp = np.mean(ir["y"][ir_peaks]) - np.mean(ir["y"][ir_troughs])
+
+        red_AC_rms = red_vpp / 2
+        ir_AC_rms = ir_vpp / 2
+        # red_AC_rms = red_AC.rolling(window, center=True).std() # ac rms-- rolling standard deviation
+        # ir_AC_rms  = ir_AC.rolling(window, center=True).std() # ac rms-- rolling standard deviation
+
+        # ratio
+        ratio = (red_AC_rms / red_DC) / (ir_AC_rms / ir_DC) # ratio as a function of time
+
+        avg_ratio = np.mean(ratio)
+        print(f"Average ratio: {np.mean(ratio)}")
+
+        # plot
+        fig3, ax3 = plt.subplots()
+        ax3.set_title("Demodulated Signals (Offset of +0.01V on Red Signal)")
+        ax3.plot(red["x"], red["y"] + 0.01, label="Red", color="red", linewidth=1)
+        ax3.plot(ir["x"], ir["y"], label="IR", color="purple", linewidth=1)
+        ax3.legend()
+        ax3.set_xlabel("Time (ms)")
+        ax3.set_ylabel("Voltage")
+        ax3.grid(True)
+
+        fig4, ax4 = plt.subplots()
+        ax4.set_title("Ratio (R/IR) vs Time (ms)")
+        ax4.plot(red["x"], ratio)
+        ax4.set_xlabel("Time (ms)")
+        ax4.set_ylabel("R")
+        ax4.grid(True)
+
+
+        # Plot SpO2 vs Ratio
+        A = 113.33
+        B = 26.67
+        spo2_val = A - (B * avg_ratio)
+        R_range = np.linspace(0.4, 2.2, 100)
+        SpO2_line = A - B * R_range
+
+        fig5, ax5 = plt.subplots(figsize=(9, 6))
+        ax5.plot(R_range, SpO2_line, 'b--', alpha=0.6, label=f'Calibration: $SpO_2 = {A} - {B}R$')
+        ax5.scatter([0.5, 2.0], [100, 60], color='black', marker='x', label='Reference Points')
+        ax5.scatter(avg_ratio, spo2_val, color='pink', s=150, edgecolors='black', zorder=5, 
+            label=f'Your Measurement: {spo2_val:.1f}%')
+        ax5.text(avg_ratio + 0.05, spo2_val + 2, f"You: {spo2_val}%", color='red', fontweight='bold')
+        ax5.set_title("SpO2 vs. Ratio (R/IR)")
+        ax5.set_xlabel("R/IR")
+        ax5.set_ylabel("SpO2 (%)")
+        ax5.set_ylim(50, 115)
+        ax5.legend()
+
+        
+        plt.show()
+
+        ads.disconnect()
+
        
-       # PLOT RAW DATA
-       plt.plot(raw_data["x"], raw_data["y"])
-       plt.xlabel('Time (ms)')
-       plt.ylabel('Voltage (V)')
-       plt.title("Scope Trace (Raw Data)")
-       plt.show()
-       ads.close_wavegen()
-
-       # TAKE FFT
-       fft_raw = fft(raw_data)
-       plt.plot(fft_raw["frequencies"], fft_raw["magnitudes"])
-       plt.xlabel("Frequencies (Hz)")
-       plt.ylabel("Voltage (V)")
-       plt.grid(visible=True, which='major', color='black', linestyle='-')
-       plt.grid(visible=True, which='minor', color='black', linestyle='--')
-    #    plt.ylim(0, 0.1)
-       plt.title("FFT Demod Radio")
-       plt.show()
-    #    plt.xlim(0, 5)
-
-
-    #    demod_radio_raw = demodulate_radio(raw_data, nu_3db=15000)
-
-       # Run again to take demodulated lock in
-       red_demodlockin = demodulate_lockin(ads, nu_mod=7000, nu_3db=100)
-       ir_demodlockin = demodulate_lockin(ads, nu_mod=12000, nu_3db=100)
-
-       # Calculate
-       # red
-       red_peaks, _ = find_peaks(red_demodlockin["y"]) # gets indices
-       red_troughs, _ = find_peaks(-red_demodlockin["y"]) # gets indices
-       red_vpp = np.mean(red_demodlockin["y"][red_peaks]) - np.mean(red_demodlockin["y"][red_troughs])
-
-       # ir
-       ir_peaks, _ = find_peaks(ir_demodlockin["y"]) # gets indices
-       ir_troughs, _ = find_peaks(-ir_demodlockin["y"]) # gets indices
-       ir_vpp = np.mean(ir_demodlockin["y"][ir_peaks]) - np.mean(ir_demodlockin["y"][ir_troughs])
-
-       red_AC_rms = red_vpp / 2
-       ir_AC_rms = ir_vpp / 2
-
-       # DC needs to be moving average of demodlockin data
-    #    window = int(0.5 * sampling_freq)
-    #    red_series = pd.Series(red_demodlockin["y"])
-    #    ir_series = pd.Series(ir_demodlockin["y"])
-    #    red_DC = red_series.rolling(window, center=True).mean()
-    #    ir_DC = ir_series.rolling(window, center=True).mean()
-       red_DC = np.mean(red_demodlockin["y"])
-       ir_DC = np.mean(ir_demodlockin["y"])
-
-       ratio = (red_AC_rms/red_DC) / (ir_AC_rms/ir_DC)
-
-       fig, ax = plt.subplots(2, 2)
-    #    ax[0,0].plot(raw_data["x"], raw_data["y"]); ax[0,0].set_title("Scope Trace (Raw Data)")
-    #    ax[0,1].plot(red_demodlockin["x"], ratio); ax[0,1].set_title("Time v Ratio")
-       # ax[1,0].plot(x, y3); ax[1,0].set_title("Tangent")
-       # # ax[1,1].plot(x, y4); ax[1,1].set_title("Tanh")
-       # plt.show()
-
-       print(f"red ac rms: {red_AC_rms}")
-       print(f"red_dc: {red_DC}")
-       print(f"ir rms: {ir_AC_rms}")
-       print(f"ir_dc: {ir_DC}")
-       print(f"ratio: {ratio}")
-    #    plt.plot(red_demodlockin["x"], ratio)
-    #    plt.xlabel('Time (ms)')
-    #    plt.ylabel('R')
-    #    plt.show()
-
-
-       ads.disconnect()
-       
-       
-
     except Exception:
         #allows you to see errors while ensuring that connections closed
         traceback.print_exc()

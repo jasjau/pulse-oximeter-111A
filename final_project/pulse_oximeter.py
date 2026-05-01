@@ -87,6 +87,15 @@ class ADSHardware():
         """
         buffer = scope.record(self.handle, channel=channel)
         return buffer
+    
+    def read_scopes(self, channels):
+        data = {}
+        
+        for ch in channels:
+            buffer = scope.record(self.handle, channel=ch)
+            data[ch] = buffer
+        
+        return data
 
     def close_scope(self):
         """Closes connection to the scope.
@@ -142,6 +151,24 @@ def oscilloscope_run(ads_object: ADSHardware, duration: int, channel: int, sampl
     buffer = ads_object.read_scope()
     data["y"] = buffer
 
+    # MODIFY THE LINE BELOW THIS ONE IN L10.2(d)
+    data["x"] = np.arange(buffer_size) / (sampling_freq) * (MS_CONVERSION)
+
+    ads_object.close_scope()
+    return data
+
+def oscilloscope_run2(ads_object: ADSHardware, duration: int, channels=[1, 2], sampling_freq=500):
+    buffer_size = int(duration * sampling_freq) # number of samples to take
+    data = {}
+    ads_object.open_scope(sample_freq=sampling_freq, buffer_size=buffer_size)
+
+    MS_CONVERSION = 1e3
+
+    buffers = ads_object.read_scopes(channels)
+
+    data["ch1"] = buffers[1]
+    data["ch2"] = buffers[2]
+    
     # MODIFY THE LINE BELOW THIS ONE IN L10.2(d)
     data["x"] = np.arange(buffer_size) / (sampling_freq) * (MS_CONVERSION)
 
@@ -387,7 +414,8 @@ if __name__ == "__main__":
 
 
     try:
-        '''# 1 run of the LED collecteing data
+        # ORIGINAL CODE-- RUNS OLD DEMODLOCKIN FUNCTION # 
+        '''# 1 run of the LED collecting data
         # ads.use_wavegen(channel=1, function=wavegen_functions["dc"], offset_v=2) #ADS control
     
         # time.sleep(1)
@@ -483,18 +511,19 @@ if __name__ == "__main__":
 
         ads.disconnect()'''
 
-        # Set-up
-        red_freq = 150
-        ir_freq  = 500
+        # READING AC AND DC AT ONE OUTPUT -- OLD CIRCUIT # 
+        '''# Set-up
+        red_freq = 80
+        ir_freq  = 400
 
-        ads.use_wavegen(channel=1, function=wavegen_functions["square"], offset_v=2, amp_v=2, freq_hz=red_freq)
-        ads.use_wavegen(channel=2, function=wavegen_functions["square"], offset_v=2, amp_v=2, freq_hz=ir_freq)
+        ads.use_wavegen(channel=1, function=wavegen_functions["sine"], offset_v=3, amp_v=2, freq_hz=red_freq)
+        ads.use_wavegen(channel=2, function=wavegen_functions["sine"], offset_v=3, amp_v=2, freq_hz=ir_freq)
 
         time.sleep(1)
 
         # Take raw data
-        duration = 8
-        sampling_freq = 1100
+        duration = 15
+        sampling_freq = 900
 
         raw_data = oscilloscope_run(ads, duration=duration, channel=1, sampling_freq=sampling_freq)
 
@@ -542,19 +571,19 @@ if __name__ == "__main__":
         ir_AC  = ir_series - ir_DC # remove dc from ac signal
 
         # CHECK THESE CALCULATIONS
-        red_peaks, _ = find_peaks(red["y"]) # gets indices
-        red_troughs, _ = find_peaks(-red["y"]) # gets indices
-        red_vpp = np.mean(red["y"][red_peaks]) - np.mean(red["y"][red_troughs])
+        # red_peaks, _ = find_peaks(red["y"]) # gets indices
+        # red_troughs, _ = find_peaks(-red["y"]) # gets indices
+        # red_vpp = np.mean(red["y"][red_peaks]) - np.mean(red["y"][red_troughs])
 
-        # ir
-        ir_peaks, _ = find_peaks(ir["y"]) # gets indices
-        ir_troughs, _ = find_peaks(-ir["y"]) # gets indices
-        ir_vpp = np.mean(ir["y"][ir_peaks]) - np.mean(ir["y"][ir_troughs])
+        # # ir
+        # ir_peaks, _ = find_peaks(ir["y"]) # gets indices
+        # ir_troughs, _ = find_peaks(-ir["y"]) # gets indices
+        # ir_vpp = np.mean(ir["y"][ir_peaks]) - np.mean(ir["y"][ir_troughs])
 
-        red_AC_rms = red_vpp / 2
-        ir_AC_rms = ir_vpp / 2
-        # red_AC_rms = red_AC.rolling(window, center=True).std() # ac rms-- rolling standard deviation
-        # ir_AC_rms  = ir_AC.rolling(window, center=True).std() # ac rms-- rolling standard deviation
+        # red_AC_rms = red_vpp / 2
+        # ir_AC_rms = ir_vpp / 2
+        red_AC_rms = red_series.rolling(window, center=True).std() # ac rms-- rolling standard deviation
+        ir_AC_rms  = ir_series.rolling(window, center=True).std() # ac rms-- rolling standard deviation
 
         # ratio
         ratio = (red_AC_rms / red_DC) / (ir_AC_rms / ir_DC) # ratio as a function of time
@@ -564,13 +593,20 @@ if __name__ == "__main__":
 
         # plot
         fig3, ax3 = plt.subplots()
-        ax3.set_title("Demodulated Signals (Offset of +0.01V on Red Signal)")
-        ax3.plot(red["x"], red["y"] + 0.01, label="Red", color="red", linewidth=1)
-        ax3.plot(ir["x"], ir["y"], label="IR", color="purple", linewidth=1)
+        fig11, ax11 = plt.subplots()
+        ax3.set_title("Demodulated Signals (Red Signal)")
+        ax3.plot(red["x"], red["y"], label="Red", color="red", linewidth=1)
         ax3.legend()
         ax3.set_xlabel("Time (ms)")
         ax3.set_ylabel("Voltage")
         ax3.grid(True)
+
+        ax11.set_title("Demodulated Signal (IR Signal)")
+        ax11.plot(ir["x"], ir["y"], label="IR", color="purple", linewidth=1)
+        ax11.legend()
+        ax11.set_xlabel("Time (ms)")
+        ax11.set_ylabel("Voltage")
+        ax11.grid(True)
 
         fig4, ax4 = plt.subplots()
         ax4.set_title("Ratio (R/IR) vs Time (ms)")
@@ -578,7 +614,6 @@ if __name__ == "__main__":
         ax4.set_xlabel("Time (ms)")
         ax4.set_ylabel("R")
         ax4.grid(True)
-
 
         # Plot SpO2 vs Ratio
         A = 113.33
@@ -602,8 +637,308 @@ if __name__ == "__main__":
         
         plt.show()
 
-        ads.disconnect()
+        ads.disconnect()'''
 
+
+        '''# MEASURE AC AND DC AT DIFFERENT POINTS #
+        red_freq = 110
+        ir_freq = 350
+        duration = 10
+        sampling_freq = 800
+        nu_3db = 10
+
+        ads.use_wavegen(channel=1, function=wavegen_functions["sine"], offset_v=2, amp_v=1, freq_hz=red_freq)
+        ads.use_wavegen(channel=2, function=wavegen_functions["sine"], offset_v=2, amp_v=1, freq_hz=ir_freq)
+
+        time.sleep(1)
+
+        # Take raw data
+        raw_data = oscilloscope_run(ads, duration=duration, channel=1, sampling_freq=sampling_freq)
+
+        ads.close_wavegen()
+        
+        # Save raw data
+        # fname = os.path.join('./saved_files', 'raw_'+time.strftime("%Y%m%d-%H%M%S")+".txt")
+        # np.savetxt(fname, np.array([raw_data["x"], raw_data["y"]]))
+
+        # Plot Raw Data
+        fig1, ax1 = plt.subplots()
+        ax1.set_title("Scope Trace (Raw Data)")
+        ax1.plot(raw_data["x"], raw_data["y"], label="Raw Data")
+        ax1.set_xlabel('Time (ms)')
+        ax1.set_ylabel('Voltage (V)')
+        ax1.grid(True)
+
+        # Take FFT and Plot
+        fft_ch1 = fft(raw_data)
+        fig2, ax2 = plt.subplots()
+        ax2.set_title("FFT of Raw Data")
+        ax2.plot(fft_ch1["frequencies"], fft_ch1["magnitudes"])
+        ax2.set_xlabel("Frequency (Hz)")
+        ax2.set_ylabel("Magnitude (V)")
+        ax2.grid(True)
+
+        # Lock-in Demodulation and Plot
+        red_demod = demodulate_lockin_from_data(raw_data, red_freq, nu_3db=nu_3db)
+        ir_demod = demodulate_lockin_from_data(raw_data, ir_freq, nu_3db=nu_3db)
+
+        fig99, ax99 = plt.subplots()
+        ax99.set_title("Demodulated Signal (Red)")
+        ax99.plot(red_demod["x"], red_demod["y"], color="red", label="Red")
+        ax99.set_xlabel("Time (ms)")
+        ax99.set_ylabel("Magnitude (V)")
+        ax99.grid(True)
+
+        fig999, ax999 = plt.subplots()
+        ax999.set_title("Demodulated Signal (IR)")
+        ax999.plot(ir_demod["x"], ir_demod["y"], color="green", label="IR")
+        ax999.set_xlabel("Time (ms)")
+        ax999.set_ylabel("Magnitude (V)")
+        ax999.grid(True)
+
+        # Save Demod Data
+        # fname = os.path.join('./saved_files', 'demod_'+time.strftime("%Y%m%d-%H%M%S")+".txt")
+        # np.savetxt(fname, np.array([red["x"], red["y"], ir["y"]]))
+
+        # Get DC
+        window = int(0.5 * sampling_freq)
+
+        red_series = pd.Series(red_demod["y"])
+        ir_series = pd.Series(ir_demod["y"])
+
+        red_DC = red_series.rolling(window, center=True).mean().bfill().ffill() # dc
+        ir_DC = ir_series.rolling(window, center=True).mean().bfill().ffill() # dc
+
+        # Get AC
+        red_AC_rms = red_series.rolling(window, center=True).std().bfill().ffill() # ac rms-- rolling standard deviation
+        ir_AC_rms  = ir_series.rolling(window, center=True).std().bfill().ffill()
+
+        # Conver to Arrays
+        red_AC = np.array(red_AC_rms - red_DC)
+        ir_AC = np.array(ir_AC_rms - ir_DC)
+
+        red_DC = np.array(red_DC)
+        ir_DC = np.array(ir_DC)
+
+        # Calculate the Ratio
+        # valid_mask = red_demod["x"] < 4000 
+        # red_AC = red_AC[valid_mask]
+        # red_DC = red_DC[valid_mask]
+        # ir_AC = ir_AC[valid_mask]
+        # ir_DC = ir_DC[valid_mask]
+
+        ratio = (red_AC / red_DC) / (ir_AC / ir_DC)
+
+        avg_ratio = np.mean(ratio)
+        print(f"Average ratio: {np.mean(ratio)}")
+
+        print(f"Red DC: {red_DC}")
+        print(f"IR DC: {ir_DC}")
+        print(f"Red AC: {red_AC}")
+        print(f"IR AC: {ir_AC}")
+
+        fig4, ax4 = plt.subplots()
+        ax4.set_title("Ratio (R/IR) vs Time (ms)")
+        ax4.plot(raw_data["x"], ratio)
+        ax4.set_xlabel("Time (ms)")
+        ax4.set_ylabel("Ratio (R/IR)")
+        ax4.grid(True)
+
+        # Plot SpO2 vs Ratio
+        A = 113.33
+        B = 26.67
+        spo2_val = A - (B * avg_ratio)
+        R_range = np.linspace(0.4, 2.2, 100)
+        SpO2_line = A - B * R_range
+
+        fig5, ax5 = plt.subplots(figsize=(9, 6))
+        ax5.plot(R_range, SpO2_line, 'b--', alpha=0.6, label=f'Calibration: $SpO_2 = {A} - {B}R$')
+        ax5.scatter([0.5, 2.0], [100, 60], color='black', marker='x', label='Reference Points')
+        ax5.scatter(avg_ratio, spo2_val, color='pink', s=150, edgecolors='black', zorder=5,
+        label=f'Your Measurement: {spo2_val:.1f}%')
+        ax5.text(avg_ratio + 0.05, spo2_val + 2, f"You: {spo2_val}%", color='red', fontweight='bold')
+        ax5.set_title("SpO2 vs. Ratio (R/IR)")
+        ax5.set_xlabel("R/IR")
+        ax5.set_ylabel("SpO2 (%)")
+        ax5.set_ylim(50, 115)
+        ax5.legend()
+
+        fig6, ax6 = plt.subplots()
+        ax6.plot(raw_data["x"], red_AC + red_DC)
+        ax6.set_title("Red AC Signal")
+        ax6.set_xlabel("Time (ms)")
+        ax6.set_ylabel("Magnitude (V)")
+        ax6.grid(True)
+
+        fig7, ax7 = plt.subplots()
+        ax7.plot(raw_data["x"], ir_AC + ir_DC)
+        ax7.set_title("IR AC Signal")
+        ax7.set_xlabel("Time (ms)")
+        ax7.set_ylabel("Magnitude (V)")
+        ax7.grid(True)
+
+        plt.show()
+        ads.disconnect()'''
+
+        # MEASURE AC AND DC AT DIFFERENT POINTS # 
+        red_freq = 110
+        ir_freq = 350
+        duration = 8
+        sampling_freq = 1000
+        nu_3db = 10
+
+        ads.use_wavegen(channel=1, function=wavegen_functions["sine"], offset_v=2, amp_v=1, freq_hz=red_freq)
+        ads.use_wavegen(channel=2, function=wavegen_functions["sine"], offset_v=2, amp_v=1, freq_hz=ir_freq)
+
+        time.sleep(1)
+
+        # Take raw data
+        raw_data = oscilloscope_run2(ads, duration=duration, channels=[1, 2], sampling_freq=sampling_freq)
+
+        ads.close_wavegen()
+        
+        # Save raw data
+        # fname = os.path.join('./saved_files', 'raw_'+time.strftime("%Y%m%d-%H%M%S")+".txt")
+        # np.savetxt(fname, np.array([raw_data["x"], raw_data["y"]]))
+
+        # Plot Raw Data -- CH 1
+        fig1, ax1 = plt.subplots()
+        ax1.set_title("Scope Trace (Raw Data)")
+        ax1.plot(raw_data["x"], raw_data["ch1"], label="Raw Data")
+        ax1.set_xlabel('Time (ms)')
+        ax1.set_ylabel('Voltage (V)')
+        ax1.grid(True)
+
+        # Take FFT and Plot -- CH1
+        ch1_dict = {"x": raw_data["x"], "y" : raw_data["ch1"]}
+        ch2_dict = {"x": raw_data["x"], "y" : raw_data["ch2"]} # ch2
+        fft_ch1 = fft(ch1_dict)
+        fig2, ax2 = plt.subplots()
+        ax2.set_title("FFT of Raw Data from CH1")
+        ax2.plot(fft_ch1["frequencies"], fft_ch1["magnitudes"])
+        ax2.set_xlabel("Frequency (Hz)")
+        ax2.set_ylabel("Magnitude (V)")
+        ax2.grid(True)
+
+        fft_ch2 = fft(ch2_dict)
+        fig17, ax17 = plt.subplots()
+        ax17.set_title("FFT of Raw Data from CH2")
+        ax17.plot(fft_ch2["frequencies"], fft_ch2["magnitudes"])
+        ax17.set_xlabel("Frequency (Hz)")
+        ax17.set_ylabel("Magnitude (V)")
+        ax17.grid(True)
+
+        # Lock-in Demodulation and Plot -- CH 1 (AC)
+        red_demod = demodulate_lockin_from_data(ch1_dict, red_freq, nu_3db=nu_3db)
+        ir_demod = demodulate_lockin_from_data(ch1_dict, ir_freq, nu_3db=nu_3db)
+
+        red_demod2 = demodulate_lockin_from_data(ch2_dict, red_freq, nu_3db=nu_3db) # ch2
+        ir_demod2 = demodulate_lockin_from_data(ch2_dict, ir_freq, nu_3db=nu_3db) # ch2
+
+        fig99, ax99 = plt.subplots()
+        ax99.set_title("Demodulated Signal (Red 1)")
+        ax99.plot(red_demod["x"], red_demod["y"], color="red", label="Red")
+        ax99.set_xlabel("Time (ms)")
+        ax99.set_ylabel("Magnitude (V)")
+        ax99.grid(True)
+
+        fig999, ax999 = plt.subplots()
+        ax999.set_title("Demodulated Signal (IR 1)")
+        ax999.plot(ir_demod["x"], ir_demod["y"], color="green", label="IR")
+        ax999.set_xlabel("Time (ms)")
+        ax999.set_ylabel("Magnitude (V)")
+        ax999.grid(True)
+
+        # Save Demod Data
+        # fname = os.path.join('./saved_files', 'demod_'+time.strftime("%Y%m%d-%H%M%S")+".txt")
+        # np.savetxt(fname, np.array([red["x"], red["y"], ir["y"]]))
+
+        # Get DC
+        window = int(0.5 * sampling_freq)
+
+        red_series2 = pd.Series(red_demod2["y"])
+        ir_series2 = pd.Series(ir_demod2["y"])
+
+        red_DC = red_series2.rolling(window, center=True).mean().bfill().ffill() # dc
+        ir_DC = ir_series2.rolling(window, center=True).mean().bfill().ffill() # dc
+
+        # Get AC
+        red_series = pd.Series(red_demod["y"])
+        ir_series = pd.Series(ir_demod["y"])
+
+        red_AC_rms = red_series.rolling(window, center=True).std().bfill().ffill() # ac rms-- rolling standard deviation
+        ir_AC_rms  = ir_series.rolling(window, center=True).std().bfill().ffill()
+
+        # Conver to Arrays
+        red_AC = np.array(red_AC_rms - red_DC)
+        ir_AC = np.array(ir_AC_rms - ir_DC)
+
+        red_DC = np.array(red_DC)
+        ir_DC = np.array(ir_DC)
+
+        # Calculate the Ratio
+        # valid_mask = red_demod["x"] < 4000 
+        # red_AC = red_AC[valid_mask]
+        # red_DC = red_DC[valid_mask]
+        # ir_AC = ir_AC[valid_mask]
+        # ir_DC = ir_DC[valid_mask]
+
+        ratio = (red_AC / red_DC) / (ir_AC / ir_DC)
+
+        avg_ratio = np.mean(ratio)
+        print(f"Average ratio: {np.mean(ratio)}")
+
+        # print(f"Red DC: {red_DC}")
+        # print(f"IR DC: {ir_DC}")
+        # print(f"Red AC: {red_AC}")
+        # print(f"IR AC: {ir_AC}")
+
+        fig4, ax4 = plt.subplots()
+        ax4.set_title("Ratio (R/IR) vs Time (ms)")
+        ax4.plot(raw_data["x"], ratio)
+        ax4.set_xlabel("Time (ms)")
+        ax4.set_ylabel("Ratio (R/IR)")
+        ax4.grid(True)
+
+        # Plot SpO2 vs Ratio
+        A = 113.33
+        B = 26.67
+        spo2_val = A - (B * avg_ratio)
+        R_range = np.linspace(0.4, 2.2, 100)
+        SpO2_line = A - B * R_range
+        print(f"SpO2 %: {spo2_val}")
+
+        if spo2_val > 100 or spo2_val < 85:
+            print("Faulty reading! Try again!")
+        else:
+            fig5, ax5 = plt.subplots(figsize=(9, 6))
+            ax5.plot(R_range, SpO2_line, 'b--', alpha=0.6, label=f'Calibration: $SpO_2 = {A} - {B}R$')
+            ax5.scatter([0.5, 2.0], [100, 60], color='black', marker='x', label='Reference Points')
+            ax5.scatter(avg_ratio, spo2_val, color='pink', s=150, edgecolors='black', zorder=5,
+            label=f'Your Measurement: {spo2_val:.1f}%')
+            ax5.text(avg_ratio + 0.05, spo2_val + 2, f"You: {spo2_val}%", color='red', fontweight='bold')
+            ax5.set_title("SpO2 vs. Ratio (R/IR)")
+            ax5.set_xlabel("R/IR")
+            ax5.set_ylabel("SpO2 (%)")
+            ax5.set_ylim(50, 115)
+            ax5.legend()
+
+        fig6, ax6 = plt.subplots()
+        ax6.plot(raw_data["x"], red_AC, color="red") ###
+        ax6.set_title("Red AC Signal")
+        ax6.set_xlabel("Time (ms)")
+        ax6.set_ylabel("Magnitude (V)")
+        ax6.grid(True)
+
+        fig7, ax7 = plt.subplots()
+        ax7.plot(raw_data["x"], ir_AC, color="green") ###
+        ax7.set_title("IR AC Signal")
+        ax7.set_xlabel("Time (ms)")
+        ax7.set_ylabel("Magnitude (V)")
+        ax7.grid(True)
+
+        plt.show()
+        ads.disconnect()
        
     except Exception:
         #allows you to see errors while ensuring that connections closed

@@ -1,6 +1,6 @@
 
 # Physics 111A Pulse Oximeter
-# Jasmine Jaura and Melanie Linares
+
 
 """Physics 111A Lab 10 functions.
 Written by Auden Young, 11/2025.
@@ -264,25 +264,25 @@ def demodulate_radio(data: dict, nu_3db: float, save=True):
     demod_data["y"] = butter_lowpass_filter(rectified_data, nu_3db, fs) #low pass
 
     #plot the different steps
-    fig, axs = plt.subplots(2, 2)
-    axs[0, 0].plot(demod_data["x"], data["y"])
-    axs[0, 0].set_title('Raw Signal (Vout)')
-    axs[0, 1].plot(demod_data["x"], dc_offset_remove, 'tab:orange')
-    axs[0, 1].set_title('DC Offset Removed')
-    axs[1, 0].plot(demod_data["x"], rectified_data, 'tab:green')
-    axs[1, 0].set_title('Rectified (Vout1)')
-    axs[1, 1].plot(demod_data["x"], demod_data["y"], 'tab:red')
-    axs[1, 1].set_title('Low Pass Filtered (Vout2)')
+    # fig, axs = plt.subplots(2, 2)
+    # axs[0, 0].plot(demod_data["x"], data["y"])
+    # axs[0, 0].set_title('Raw Signal (Vout)')
+    # axs[0, 1].plot(demod_data["x"], dc_offset_remove, 'tab:orange')
+    # axs[0, 1].set_title('DC Offset Removed')
+    # axs[1, 0].plot(demod_data["x"], rectified_data, 'tab:green')
+    # axs[1, 0].set_title('Rectified (Vout1)')
+    # axs[1, 1].plot(demod_data["x"], demod_data["y"], 'tab:red')
+    # axs[1, 1].set_title('Low Pass Filtered (Vout2)')
 
-    for ax in axs.flat:
-        ax.set(xlabel='Time (ms)', ylabel='Voltage (V)')
-        ax.grid(visible=True, which='major', color='black', linestyle='-')
-        ax.grid(visible=True, which='minor', color='black', linestyle='--')
+    # for ax in axs.flat:
+    #     ax.set(xlabel='Time (ms)', ylabel='Voltage (V)')
+    #     ax.grid(visible=True, which='major', color='black', linestyle='-')
+    #     ax.grid(visible=True, which='minor', color='black', linestyle='--')
     
-    for ax in axs.flat:
-        ax.label_outer()
+    # for ax in axs.flat:
+    #     ax.label_outer()
     
-    plt.show()
+    # plt.show()
 
     #save the data if desired
     if save:
@@ -785,10 +785,10 @@ if __name__ == "__main__":
         ir_freq = 350
         duration = 8
         sampling_freq = 1000
-        nu_3db = 10
+        nu_3db = 5
 
-        ads.use_wavegen(channel=1, function=wavegen_functions["sine"], offset_v=2, amp_v=1, freq_hz=red_freq)
-        ads.use_wavegen(channel=2, function=wavegen_functions["sine"], offset_v=2, amp_v=1, freq_hz=ir_freq)
+        ads.use_wavegen(channel=1, function=wavegen_functions["sine"], offset_v=2.15, amp_v=1, freq_hz=red_freq) # 2.15 offset
+        ads.use_wavegen(channel=2, function=wavegen_functions["sine"], offset_v=2.15, amp_v=1, freq_hz=ir_freq)
 
         time.sleep(1)
 
@@ -803,11 +803,19 @@ if __name__ == "__main__":
 
         # Plot Raw Data -- CH 1
         fig1, ax1 = plt.subplots()
-        ax1.set_title("Scope Trace (Raw Data)")
+        ax1.set_title("Scope Trace (Raw Data -- Ch. 1)")
         ax1.plot(raw_data["x"], raw_data["ch1"], label="Raw Data")
         ax1.set_xlabel('Time (ms)')
         ax1.set_ylabel('Voltage (V)')
         ax1.grid(True)
+
+        fig11, ax11 = plt.subplots()
+        ax11.set_title("Scope Trace (Raw Data -- Ch. 2)")
+        ax11.plot(raw_data["x"], raw_data["ch2"], label="Raw Data")
+        ax11.set_xlabel('Time (ms)')
+        ax11.set_ylabel('Voltage (V)')
+        ax11.grid(True)
+
 
         # Take FFT and Plot -- CH1
         ch1_dict = {"x": raw_data["x"], "y" : raw_data["ch1"]}
@@ -869,8 +877,22 @@ if __name__ == "__main__":
         red_AC_rms = red_series.rolling(window, center=True).std().bfill().ffill() # ac rms-- rolling standard deviation
         ir_AC_rms  = ir_series.rolling(window, center=True).std().bfill().ffill()
 
+        ########
+        # red_peaks, _ = find_peaks(red_demod["y"]) # gets indices
+        # red_troughs, _ = find_peaks(-red_demod["y"]) # gets indices
+        # red_vpp = np.mean(red_demod["y"][red_peaks]) - np.mean(red_demod["y"][red_troughs])
+
+        # # ir
+        # ir_peaks, _ = find_peaks(ir_demod["y"]) # gets indices
+        # ir_troughs, _ = find_peaks(-ir_demod["y"]) # gets indices
+        # ir_vpp = np.mean(ir_demod["y"][ir_peaks]) - np.mean(ir_demod["y"][ir_troughs])
+
+        # red_AC_rms = red_vpp / 2
+        # ir_AC_rms = ir_vpp / 2
+        ##########
+
         # Conver to Arrays
-        red_AC = np.array(red_AC_rms - red_DC)
+        red_AC = np.array(red_AC_rms- red_DC)
         ir_AC = np.array(ir_AC_rms - ir_DC)
 
         red_DC = np.array(red_DC)
@@ -883,10 +905,12 @@ if __name__ == "__main__":
         # ir_AC = ir_AC[valid_mask]
         # ir_DC = ir_DC[valid_mask]
 
+        
+
         ratio = (red_AC / red_DC) / (ir_AC / ir_DC)
 
         avg_ratio = np.mean(ratio)
-        print(f"Average ratio: {np.mean(ratio)}")
+        print(f"Average ratio: {np.mean(ratio):.2f}")
 
         # print(f"Red DC: {red_DC}")
         # print(f"IR DC: {ir_DC}")
@@ -906,10 +930,12 @@ if __name__ == "__main__":
         spo2_val = A - (B * avg_ratio)
         R_range = np.linspace(0.4, 2.2, 100)
         SpO2_line = A - B * R_range
-        print(f"SpO2 %: {spo2_val}")
+        print(f"SpO2 %: {spo2_val:.2f}")
 
-        if spo2_val > 100 or spo2_val < 85:
-            print("Faulty reading! Try again!")
+        if spo2_val > 100:
+            print("Reading too high! Try again!")
+        elif spo2_val < 85:
+            print("Reading too low! Try again!")
         else:
             fig5, ax5 = plt.subplots(figsize=(9, 6))
             ax5.plot(R_range, SpO2_line, 'b--', alpha=0.6, label=f'Calibration: $SpO_2 = {A} - {B}R$')
